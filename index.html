@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html>
 <head>
     <title>Call Marriage Game</title>
@@ -14,10 +14,11 @@
 <body>
     <h1>Call Marriage Card Game</h1>
     <button onclick="joinGame()">Join Game</button>
+    <button onclick="startGame()">Start Game</button>
     <div id="gameArea"></div>
     <div id="playerHand"></div>
     <div id="gameStatus"></div>
-    
+
     <script>
         // Firebase Configuration
         const firebaseConfig = {
@@ -30,18 +31,23 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        
+
         let playerId = Math.random().toString(36).substr(2, 5);
         let gameRef = db.ref("game");
         let deck = ["A♠", "2♠", "3♠", "4♠", "5♠", "6♠", "7♠", "8♠", "9♠", "10♠", "J♠", "Q♠", "K♠", 
                     "A♥", "2♥", "3♥", "4♥", "5♥", "6♥", "7♥", "8♥", "9♥", "10♥", "J♥", "Q♥", "K♥"];
-        
+
+        // Join game
         function joinGame() {
-            gameRef.child("players").child(playerId).set({ id: playerId, status: "joined", hand: [] });
-            listenForUpdates();
+            console.log("Player joined: " + playerId);  // Log the player joining the game
+            gameRef.child("players").child(playerId).set({ id: playerId, status: "joined", hand: [] })
+                .then(() => listenForUpdates())
+                .catch(error => alert('Error joining game: ' + error.message)); // Show errors in popup
         }
-        
+
+        // Listen for updates
         function listenForUpdates() {
+            console.log("Listening for updates...");  // Log when updates are being listened for
             gameRef.child("players").on("value", snapshot => {
                 let players = snapshot.val();
                 document.getElementById("gameArea").innerHTML = "Players: " + Object.keys(players).join(", ");
@@ -51,62 +57,75 @@
             });
             gameRef.child("turn").on("value", snapshot => {
                 let turn = snapshot.val();
+                console.log("Turn: " + turn);  // Log whose turn it is
                 document.getElementById("gameStatus").innerHTML = `Turn: <span class='turn'>${turn}</span>`;
                 if (turn === playerId) {
                     document.getElementById("gameStatus").innerHTML += " - It's your turn!";
                 }
             });
         }
-        
+
+        // Start game
         function startGame() {
+            console.log("Game started...");  // Log game start
             let shuffledDeck = deck.sort(() => Math.random() - 0.5);
-            gameRef.child("deck").set(shuffledDeck);
-            distributeCards(shuffledDeck);
+            gameRef.child("deck").set(shuffledDeck)
+                .then(() => distributeCards(shuffledDeck))
+                .catch(error => alert('Error starting game: ' + error.message)); // Show errors in popup
         }
-        
+
+        // Distribute cards
         function distributeCards(deck) {
+            console.log("Distributing cards...");  // Log card distribution
             gameRef.child("players").once("value", snapshot => {
                 let players = snapshot.val();
                 let playerKeys = Object.keys(players);
                 let cardsPerPlayer = Math.floor(deck.length / playerKeys.length);
-                
+
                 playerKeys.forEach((player, index) => {
                     let hand = deck.slice(index * cardsPerPlayer, (index + 1) * cardsPerPlayer);
                     gameRef.child("players").child(player).child("hand").set(hand);
                     if (player === playerId) displayHand(hand);
                 });
                 gameRef.child("turn").set(playerKeys[0]);
-            });
+            }).catch(error => alert('Error distributing cards: ' + error.message)); // Show errors in popup
         }
-        
+
+        // Display hand
         function displayHand(hand) {
             let handDiv = document.getElementById("playerHand");
             handDiv.innerHTML = "<h2>Your Hand:</h2>" + hand.map(card => `<div class='card' onclick='playCard("${card}")'>${card}</div>`).join(" ");
         }
-        
+
+        // Play card
         function playCard(card) {
+            console.log("Card Played: " + card);  // Log card play
             gameRef.child("turn").once("value", snapshot => {
                 if (snapshot.val() === playerId) {
-                    gameRef.child("playedCards").push({ player: playerId, card: card });
-                    gameRef.child("players").child(playerId).child("hand").once("value", handSnap => {
-                        let newHand = handSnap.val().filter(c => c !== card);
-                        gameRef.child("players").child(playerId).child("hand").set(newHand);
-                        passTurn();
-                    });
+                    gameRef.child("playedCards").push({ player: playerId, card: card })
+                        .then(() => {
+                            gameRef.child("players").child(playerId).child("hand").once("value", handSnap => {
+                                let newHand = handSnap.val().filter(c => c !== card);
+                                gameRef.child("players").child(playerId).child("hand").set(newHand);
+                                passTurn();
+                            });
+                        })
+                        .catch(error => alert('Error playing card: ' + error.message)); // Show errors in popup
                 }
-            });
+            }).catch(error => alert('Error checking turn: ' + error.message)); // Show errors in popup
         }
-        
+
+        // Pass turn to next player
         function passTurn() {
+            console.log("Passing turn...");  // Log turn pass
             gameRef.child("players").once("value", snapshot => {
                 let players = Object.keys(snapshot.val());
                 let currentTurnIndex = players.indexOf(playerId);
                 let nextTurnIndex = (currentTurnIndex + 1) % players.length;
                 gameRef.child("turn").set(players[nextTurnIndex]);
-            });
+            }).catch(error => alert('Error passing turn: ' + error.message)); // Show errors in popup
         }
     </script>
-    
-    <button onclick="startGame()">Start Game</button>
+
 </body>
 </html>
