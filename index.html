@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Call Marriage Game</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        #gameArea { margin-top: 20px; }
+        .card { display: inline-block; padding: 10px; border: 1px solid black; margin: 5px; cursor: pointer; }
+        .turn { font-weight: bold; color: red; }
+    </style>
+</head>
+<body>
+    <h1>Call Marriage Card Game</h1>
+    <button onclick="joinGame()">Join Game</button>
+    <div id="gameArea"></div>
+    <div id="playerHand"></div>
+    <div id="gameStatus"></div>
+    
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAvC3w2OJatNPTfOD0YE5-v24XYul2vg7s",
+            authDomain: "anonymous-messages-692c3.firebaseapp.com",
+            projectId: "anonymous-messages-692c3",
+            storageBucket: "anonymous-messages-692c3.appspot.com",
+            messagingSenderId: "152307243781",
+            appId: "1:152307243781:web:f9e7787bcab188aefa756c"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        
+        let playerId = Math.random().toString(36).substr(2, 5);
+        let gameRef = db.ref("game");
+        let deck = ["A♠", "2♠", "3♠", "4♠", "5♠", "6♠", "7♠", "8♠", "9♠", "10♠", "J♠", "Q♠", "K♠", 
+                    "A♥", "2♥", "3♥", "4♥", "5♥", "6♥", "7♥", "8♥", "9♥", "10♥", "J♥", "Q♥", "K♥"];
+        
+        function joinGame() {
+            gameRef.child("players").child(playerId).set({ id: playerId, status: "joined", hand: [] });
+            listenForUpdates();
+        }
+        
+        function listenForUpdates() {
+            gameRef.child("players").on("value", snapshot => {
+                let players = snapshot.val();
+                document.getElementById("gameArea").innerHTML = "Players: " + Object.keys(players).join(", ");
+                if (players && players[playerId] && players[playerId].hand) {
+                    displayHand(players[playerId].hand);
+                }
+            });
+            gameRef.child("turn").on("value", snapshot => {
+                let turn = snapshot.val();
+                document.getElementById("gameStatus").innerHTML = `Turn: <span class='turn'>${turn}</span>`;
+                if (turn === playerId) {
+                    document.getElementById("gameStatus").innerHTML += " - It's your turn!";
+                }
+            });
+        }
+        
+        function startGame() {
+            let shuffledDeck = deck.sort(() => Math.random() - 0.5);
+            gameRef.child("deck").set(shuffledDeck);
+            distributeCards(shuffledDeck);
+        }
+        
+        function distributeCards(deck) {
+            gameRef.child("players").once("value", snapshot => {
+                let players = snapshot.val();
+                let playerKeys = Object.keys(players);
+                let cardsPerPlayer = Math.floor(deck.length / playerKeys.length);
+                
+                playerKeys.forEach((player, index) => {
+                    let hand = deck.slice(index * cardsPerPlayer, (index + 1) * cardsPerPlayer);
+                    gameRef.child("players").child(player).child("hand").set(hand);
+                    if (player === playerId) displayHand(hand);
+                });
+                gameRef.child("turn").set(playerKeys[0]);
+            });
+        }
+        
+        function displayHand(hand) {
+            let handDiv = document.getElementById("playerHand");
+            handDiv.innerHTML = "<h2>Your Hand:</h2>" + hand.map(card => `<div class='card' onclick='playCard("${card}")'>${card}</div>`).join(" ");
+        }
+        
+        function playCard(card) {
+            gameRef.child("turn").once("value", snapshot => {
+                if (snapshot.val() === playerId) {
+                    gameRef.child("playedCards").push({ player: playerId, card: card });
+                    gameRef.child("players").child(playerId).child("hand").once("value", handSnap => {
+                        let newHand = handSnap.val().filter(c => c !== card);
+                        gameRef.child("players").child(playerId).child("hand").set(newHand);
+                        passTurn();
+                    });
+                }
+            });
+        }
+        
+        function passTurn() {
+            gameRef.child("players").once("value", snapshot => {
+                let players = Object.keys(snapshot.val());
+                let currentTurnIndex = players.indexOf(playerId);
+                let nextTurnIndex = (currentTurnIndex + 1) % players.length;
+                gameRef.child("turn").set(players[nextTurnIndex]);
+            });
+        }
+    </script>
+    
+    <button onclick="startGame()">Start Game</button>
+</body>
+</html>
